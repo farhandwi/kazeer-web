@@ -17,7 +17,7 @@ class Customer extends Model
     ];
 
     protected $casts = [
-        'email_verified_at' => 'datetime',
+        'email_verified_at' => 'timestamp',
     ];
 
     public function orders(): HasMany

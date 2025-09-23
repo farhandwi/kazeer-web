@@ -17,7 +17,7 @@ class Order extends Model
         'customer_name', 'customer_phone', 'status', 'subtotal',
         'tax_amount', 'service_charge', 'discount_amount', 'total_amount',
         'payment_status', 'payment_method', 'special_instructions',
-        'estimated_prep_time', 'confirmed_at', 'ready_at', 'served_at', 'completed_at'
+        'estimated_prep_time', 'confirmed_at', 'ready_at', 'served_at', 'completed_at', 'discount_id', 'discount_code', 'discount_details'
     ];
 
     protected $casts = [
@@ -26,10 +26,10 @@ class Order extends Model
         'service_charge' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
-        'confirmed_at' => 'datetime',
-        'ready_at' => 'datetime',
-        'served_at' => 'datetime',
-        'completed_at' => 'datetime',
+        'confirmed_at' => 'timestamp',
+        'ready_at' => 'timestamp',
+        'served_at' => 'timestamp',
+        'completed_at' => 'timestamp',
     ];
 
     public function restaurant(): BelongsTo
@@ -45,6 +45,11 @@ class Order extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
     }
 
     public function items(): HasMany
@@ -121,5 +126,41 @@ class Order extends Model
         ]);
 
         return $this;
+    }
+
+    // Accessors & Mutators
+    public function getStatusLabelAttribute(): string
+    {
+        return match($this->status) {
+            'pending' => 'Pending',
+            'confirmed' => 'Confirmed',
+            'preparing' => 'Preparing',
+            'ready' => 'Ready',
+            'served' => 'Served',
+            'completed' => 'Completed',
+            'cancelled' => 'Cancelled',
+            default => ucfirst($this->status),
+        };
+    }
+
+    public function getPaymentStatusLabelAttribute(): string
+    {
+        return match($this->payment_status) {
+            'pending' => 'Pending',
+            'paid' => 'Paid',
+            'failed' => 'Failed',
+            'refunded' => 'Refunded',
+            default => ucfirst($this->payment_status),
+        };
+    }
+
+    public function getTotalItemsAttribute(): int
+    {
+        return $this->orderItems->sum('quantity');
+    }
+
+    public function getFormattedTotalAttribute(): string
+    {
+        return 'Rp ' . number_format($this->total_amount, 0, ',', '.');
     }
 }

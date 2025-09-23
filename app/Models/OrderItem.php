@@ -21,9 +21,9 @@ class OrderItem extends Model
     protected $casts = [
         'unit_price' => 'decimal:2',
         'total_price' => 'decimal:2',
-        'started_at' => 'datetime',
-        'ready_at' => 'datetime',
-        'served_at' => 'datetime',
+        'started_at' => 'timestamp',
+        'ready_at' => 'timestamp',
+        'served_at' => 'timestamp',
     ];
 
     public function order(): BelongsTo
@@ -71,5 +71,23 @@ class OrderItem extends Model
             ],
             'created_at' => now(),
         ]);
+    }
+
+    public function calculateTotalPrice()
+    {
+        $basePrice = $this->unit_price;
+        $optionsPrice = $this->selectedOptions()->sum('option_price');
+        return ($basePrice + $optionsPrice) * $this->quantity;
+    }
+
+    public function getStatusLabelAttribute(): string
+    {
+        return match($this->status) {
+            'pending' => 'Pending',
+            'preparing' => 'Preparing',
+            'ready' => 'Ready',
+            'served' => 'Served',
+            default => ucfirst($this->status),
+        };
     }
 }

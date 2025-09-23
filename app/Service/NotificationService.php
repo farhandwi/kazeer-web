@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\OrderStatusUpdated;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Notification;
@@ -101,20 +102,13 @@ class NotificationService
         ]);
     }
 
-    protected function broadcastToCustomer(Order $order, $event, $data)
+    protected function broadcastToCustomer(Order $order)
     {
-        $session = $order->table->currentSession();
-        if ($session) {
-            Broadcast::channel("table.{$session->session_token}")
-                     ->event($event)
-                     ->with($data);
-        }
+        broadcast(new \App\Events\OrderStatusUpdated($order));
     }
-
-    protected function broadcastToKitchen($restaurantId, $event, $data)
+    
+    protected function broadcastToKitchen(OrderItem $orderItem)
     {
-        Broadcast::channel("kitchen.{$restaurantId}")
-                 ->event($event)
-                 ->with($data);
-    }
+        broadcast(new \App\Events\ItemStatusUpdated($orderItem));
+    }    
 }

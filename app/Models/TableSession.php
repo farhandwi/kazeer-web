@@ -11,7 +11,9 @@ class TableSession extends Model
     use HasFactory;
 
     /**
-     * @var string
+     * The table associated with the model.
+     *
+     * @var object
      */
     protected $table = 'table_sessions';
 

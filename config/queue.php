@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'default' => env('QUEUE_CONNECTION', 'database'),
+    'default' => env('QUEUE_CONNECTION', 'redis'),
 
     /*
     |--------------------------------------------------------------------------
@@ -72,6 +72,10 @@ return [
             'after_commit' => false,
         ],
 
+    ],
+
+    'jobs' => [
+        'timeout' => 60,
     ],
 
     /*

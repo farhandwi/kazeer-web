@@ -14,14 +14,16 @@ class Restaurant extends Model
     use HasFactory;
 
     protected $fillable = [
-        'name', 'slug', 'description', 'phone', 'address', 
-        'logo', 'is_active', 'open_time', 'close_time'
+        'name', 'description', 'phone', 'email', 'address', 'logo',
+        'is_active', 'tax_rate', 'service_charge_rate', 'opening_time', 'closing_time'
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
-        'open_time' => 'datetime:H:i',
-        'close_time' => 'datetime:H:i',
+        'tax_rate' => 'decimal:2',
+        'service_charge_rate' => 'decimal:2',
+        'opening_time' => 'datetime:H:i',
+        'closing_time' => 'datetime:H:i',
     ];
 
     public function tables(): HasMany

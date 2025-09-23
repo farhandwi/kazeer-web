@@ -7,6 +7,7 @@ use App\Models\OrderItem;
 use App\Models\KitchenStation;
 use App\Services\RealTimeService;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller as BaseController;
 
 class KitchenController extends Controller
 {
