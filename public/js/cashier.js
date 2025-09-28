@@ -8,6 +8,7 @@ class CashierSystem {
         this.searchTimeout = null;
         this.currentCategory = 'all';
         this.currentSort = 'name';
+        this.isResetting = false;
         this.currentFilter = 'all';
         this.allItems = [];
         this.isProcessingOrder = false;
@@ -89,20 +90,66 @@ class CashierSystem {
         }
     }
 
-    // Save data to localStorage
     saveToStorage() {
+        // Jangan save jika sedang processing order atau reset
+        if (this.isProcessingOrder) {
+            console.log('Skipping save during order processing');
+            return;
+        }
+        
         try {
-            localStorage.setItem(this.storageKeys.cart, JSON.stringify(this.cart));
-            localStorage.setItem(this.storageKeys.customer, JSON.stringify(this.customerInfo));
+            // Save cart hanya jika ada item
+            if (this.cart && this.cart.length > 0) {
+                localStorage.setItem(this.storageKeys.cart, JSON.stringify(this.cart));
+            } else {
+                localStorage.removeItem(this.storageKeys.cart);
+            }
             
+            // Save customer info hanya jika ada data valid
+            if (this.customerInfo && (this.customerInfo.name?.trim() || this.customerInfo.phone?.trim())) {
+                localStorage.setItem(this.storageKeys.customer, JSON.stringify(this.customerInfo));
+            } else {
+                localStorage.removeItem(this.storageKeys.customer);
+            }
+            
+            // Save table info
             if (this.selectedTable) {
                 localStorage.setItem(this.storageKeys.table, JSON.stringify(this.selectedTable));
                 localStorage.setItem(this.storageKeys.tableTimestamp, Date.now().toString());
             }
             
-            console.log('Data saved to localStorage');
         } catch (error) {
             console.error('Error saving to localStorage:', error);
+        }
+    }
+
+    forceRemoveFromStorage() {
+        try {
+            // Force remove semua keys yang terkait
+            const keysToRemove = [
+                'cashier_cart',
+                'cashier_selected_table', 
+                'cashier_table_timestamp',
+                'cashier_customer_info'
+            ];
+            
+            keysToRemove.forEach(key => {
+                localStorage.removeItem(key);
+                console.log(`Removed ${key} from localStorage`);
+            });
+            
+            // Double check - remove any keys yang start dengan 'cashier_'
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('cashier_')) {
+                    localStorage.removeItem(key);
+                    console.log(`Force removed ${key} from localStorage`);
+                }
+            }
+            
+            console.log('All cashier data force removed from localStorage');
+        } catch (error) {
+            console.error('Error force removing from localStorage:', error);
         }
     }
 
@@ -163,12 +210,28 @@ class CashierSystem {
     }
 
     clearAllStorage() {
+        // Clear individual items
         Object.values(this.storageKeys).forEach(key => {
             localStorage.removeItem(key);
         });
+        
+        // Clear any other potential cashier-related data
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('cashier_')) {
+                localStorage.removeItem(key);
+            }
+        }
+        
+        console.log('All localStorage data cleared');
+        
+        // Reset object state
         this.cart = [];
         this.selectedTable = null;
         this.customerInfo = { name: '', phone: '', paymentMethod: 'cash' };
+        this.appliedCoupon = null;
+        this.appliedDiscount = null;
+        this.itemQuantities.clear();
     }
 
     // FIXED: Smart table selection initialization
@@ -1086,19 +1149,18 @@ class CashierSystem {
         }
     }
 
-    // Validate phone number (optional but must be valid if provided)
     validatePhoneNumber(input) {
         const value = input.value.trim();
         
         if (!value) {
             input.classList.remove('input-error', 'input-success');
-            return true; // Optional field, empty is valid
+            return true; // Empty is valid since it's optional
         }
-
+    
         // Basic Indonesian phone number validation
         const phoneRegex = /^(\+62|62|0)[\s-]?8[1-9][0-9]{6,10}$/;
         const isValid = phoneRegex.test(value.replace(/\s|-/g, ''));
-
+    
         if (isValid) {
             input.classList.remove('input-error');
             input.classList.add('input-success');
@@ -1108,6 +1170,67 @@ class CashierSystem {
             input.classList.remove('input-success');
             return false;
         }
+    }
+
+    validateOrderRequirements() {
+        const errors = [];
+        
+        // Check table selection
+        if (!this.selectedTable) {
+            errors.push({
+                field: null,
+                message: 'Please select a table first',
+                action: () => this.showTableSelectionModal()
+            });
+        }
+        
+        // Check cart
+        if (this.cart.length === 0) {
+            errors.push({
+                field: null,
+                message: 'Cart is empty',
+                action: () => this.closeCartModal()
+            });
+        }
+        
+        // Check customer name
+        const customerNameField = document.getElementById('customer-name');
+        const customerName = customerNameField?.value?.trim() || this.customerInfo.name || '';
+        
+        if (!customerName || customerName.length < 2) {
+            errors.push({
+                field: customerNameField,
+                message: 'Customer name is required (minimum 2 characters)',
+                action: () => {
+                    if (customerNameField) {
+                        customerNameField.classList.add('input-error');
+                        customerNameField.focus();
+                        customerNameField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        this.addShakeAnimation(customerNameField);
+                    }
+                }
+            });
+        }
+        
+        // Check phone number if provided
+        const customerPhoneField = document.getElementById('customer-phone');
+        const customerPhone = customerPhoneField?.value?.trim() || '';
+        
+        if (customerPhone && !this.validatePhoneNumber(customerPhoneField)) {
+            errors.push({
+                field: customerPhoneField,
+                message: 'Please enter a valid phone number or leave it empty',
+                action: () => {
+                    if (customerPhoneField) {
+                        customerPhoneField.focus();
+                        customerPhoneField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        this.addShakeAnimation(customerPhoneField);
+                    }
+                }
+            });
+        }
+        
+        return errors;
     }
 
     // Format Indonesian phone number
@@ -1148,6 +1271,15 @@ class CashierSystem {
                 // }
             }
         });
+    }
+
+    addShakeAnimation(element) {
+        if (!element) return;
+        
+        element.style.animation = 'shake 0.5s ease-in-out';
+        setTimeout(() => {
+            element.style.animation = '';
+        }, 500);
     }
 
     // Clear table selection
@@ -1573,6 +1705,13 @@ class CashierSystem {
     }
 
     selectTable(e) {
+        if (this.cart.length > 0 || localStorage.getItem('cashier_cart')) {
+            console.log('Clearing old data before new table selection');
+            this.immediateStorageClear();
+            this.cart = [];
+            this.customerInfo = { name: '', phone: '', paymentMethod: 'cash' };
+        }
+        
         const tableId = e.currentTarget.dataset.tableId;
         const tableNumber = e.currentTarget.dataset.tableNumber;
 
@@ -1601,6 +1740,23 @@ class CashierSystem {
 
         showToast(`Table ${tableNumber} selected! Ready to take orders.`);
         showNotification('Table Selected', `Now serving Table ${tableNumber}`);
+    }
+
+    // Method untuk test di console
+    testStorageClear() {
+        console.log('Before clear:', {
+            cart: localStorage.getItem('cashier_cart'),
+            customer: localStorage.getItem('cashier_customer_info')
+        });
+        
+        this.immediateStorageClear();
+        
+        setTimeout(() => {
+            console.log('After clear:', {
+                cart: localStorage.getItem('cashier_cart'),
+                customer: localStorage.getItem('cashier_customer_info')
+            });
+        }, 100);
     }
 
     filterByCategory(e) {
@@ -2254,104 +2410,72 @@ class CashierSystem {
         }
     }
 
-    // Enhanced process order with customer validation
     async processOrder() {
-        // PERBAIKAN: Immediate button disable dan visual feedback
-        const processButton = document.getElementById('process-order');
-        if (processButton) {
-            // Check jika sudah disabled (prevent multiple clicks)
-            if (processButton.disabled) {
-                console.log('Button already disabled, preventing duplicate request');
-                return;
+        // Validasi semua requirements
+        const validationErrors = this.validateOrderRequirements();
+        
+        if (validationErrors.length > 0) {
+            // Execute first error action dan show message
+            const firstError = validationErrors[0];
+            if (firstError.action) {
+                firstError.action();
             }
-            
+            showToast(firstError.message, 'error');
+            return;
+        }
+    
+        // Jika semua validasi passed, baru disable button dan show loading
+        const processButton = document.getElementById('process-order');
+        if (processButton?.disabled) {
+            return; // Prevent double click
+        }
+        
+        if (processButton) {
             processButton.disabled = true;
             processButton.classList.add('opacity-50', 'cursor-not-allowed');
-            processButton.innerHTML = `
-                <i class="fas fa-spinner fa-spin mr-2"></i>
-                Processing Order...
-            `;
+            processButton.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Processing Order...`;
         }
-
-        // Tambahkan overlay loading ke modal untuk prevent interaksi
-        const modal = document.getElementById('cart-modal');
-        const overlay = document.createElement('div');
-        overlay.id = 'processing-overlay';
-        overlay.className = 'absolute inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center rounded-3xl';
-        overlay.innerHTML = `
-            <div class="bg-white rounded-2xl p-6 shadow-2xl">
-                <div class="flex items-center space-x-3">
-                    <div class="animate-spin rounded-full h-6 w-6 border-2 border-orange-500 border-t-transparent"></div>
-                    <span class="font-semibold text-gray-700">Processing your order...</span>
-                </div>
-            </div>
-        `;
+    
+        // Update customer info
+        const customerName = document.getElementById('customer-name')?.value?.trim();
+        const customerPhone = document.getElementById('customer-phone')?.value?.trim();
+        const paymentMethod = document.querySelector('input[name="payment-method"]:checked')?.value || 'cash';
         
-        if (modal) {
-            const modalContent = modal.querySelector('.bg-white');
-            if (modalContent) {
-                modalContent.style.position = 'relative';
-                modalContent.appendChild(overlay);
-            }
-        }
-
+        this.updateCustomerInfo(customerName, customerPhone, paymentMethod);
+    
+        // Show loading overlay
+        this.showProcessingOverlay();
+    
         try {
-            // Check basic requirements
-            if (!this.selectedTable) {
-                this.resetProcessButton();
-                this.removeProcessingOverlay();
-                showToast('Please select a table first', 'error');
-                this.showTableSelectionModal();
-                return;
-            }
-
-            if (this.cart.length === 0) {
-                this.resetProcessButton();
-                this.removeProcessingOverlay();
-                showToast('Cart is empty', 'error');
-                return;
-            }
-
-            // Validasi customer info dengan warning saja
-            const customerNameField = document.getElementById('customer-name');
-            const customerName = customerNameField?.value?.trim() || this.customerInfo.name || '';
-            
-            if (!customerName || customerName.length < 2) {
-                this.resetProcessButton();
-                this.removeProcessingOverlay();
-                
-                if (customerNameField) {
-                    customerNameField.classList.add('input-error');
-                    customerNameField.focus();
-                    customerNameField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-                
-                showToast('Please fill in customer name (minimum 2 characters) before processing order', 'error');
-                return;
-            }
-
-            // Update customer info dari main form
-            const customerPhoneField = document.getElementById('customer-phone');
-            const customerPhone = customerPhoneField?.value?.trim() || this.customerInfo.phone || '';
-            
-            const selectedPaymentMethod = document.querySelector('input[name="payment-method"]:checked')?.value || this.customerInfo.paymentMethod || 'cash';
-            
-            this.updateCustomerInfo(customerName, customerPhone, selectedPaymentMethod);
-            
-            if (customerNameField) {
-                customerNameField.classList.remove('input-error');
-                customerNameField.classList.add('input-success');
-            }
-            
-            // Process order
             await this.processOrderWithValidation();
-            
         } catch (error) {
             console.error('Error in processOrder:', error);
             this.resetProcessButton();
             this.removeProcessingOverlay();
             showToast('Failed to process order. Please try again.', 'error');
         }
+    }
+
+    showProcessingOverlay() {
+        const overlay = document.createElement('div');
+        overlay.id = 'processing-overlay';
+        overlay.innerHTML = `
+            <div class="processing-content">
+                <div class="flex flex-col items-center space-y-4">
+                    <div class="animate-spin rounded-full h-12 w-12 border-4 border-orange-500 border-t-transparent"></div>
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Processing Order</h3>
+                        <p class="text-gray-600">Please wait while we process your order...</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-sm text-gray-500">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>Secure transaction in progress</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
     }
 
     // Method ini harus ada di class Anda
@@ -2367,7 +2491,8 @@ class CashierSystem {
     removeProcessingOverlay() {
         const overlay = document.getElementById('processing-overlay');
         if (overlay) {
-            overlay.remove();
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.remove(), 200);
         }
     }
 
@@ -2400,25 +2525,36 @@ class CashierSystem {
             const response = await axios.post('/cashier/orders', orderData);
             
             if (response.data.success) {
-                // Handle duplicate prevention response
+                // IMMEDIATE CLEAR - dilakukan langsung setelah success response
+                this.immediateStorageClear();
+                
+                // Reset object state immediately
+                this.cart = [];
+                this.selectedTable = null;
+                this.customerInfo = { name: '', phone: '', paymentMethod: 'cash' };
+                this.appliedCoupon = null;
+                this.appliedDiscount = null;
+                this.itemQuantities = new Map();
+                
+                // Handle response messages
                 if (response.data.duplicate_prevented) {
                     showToast('Order was already created successfully!', 'info');
                 } else {
                     showToast('Order created successfully!');
                 }
                 
-                showNotification('Order Placed', `Order for Table ${this.selectedTable.number} has been created`);
+                showNotification('Order Placed', `Order for Table ${response.data.order.table?.table_number || 'Selected'} has been created`);
                 
                 // Show success animation
                 this.showOrderSuccessAnimation();
                 
-                // Reset everything after animation
+                // Complete reset after animation
                 setTimeout(() => {
-                    this.resetOrder();
+                    this.completeOrderReset();
                 }, 2000);
                 
-                console.log('Order created:', response.data.order);
-            } else {
+                console.log('Order created and data cleared:', response.data.order);
+            }else {
                 throw new Error(response.data.message || 'Failed to create order');
             }
         } catch (error) {
@@ -2438,126 +2574,315 @@ class CashierSystem {
         }
     }
 
-    showOrderSuccessAnimation() {
-        const modal = document.getElementById('cart-modal');
-        const content = modal.querySelector('.bg-white');
+    completeOrderReset() {
+        console.log('Starting complete order reset...');
         
-        // PERBAIKAN: Buat overlay success di atas modal alih-alih replace innerHTML
-        const successOverlay = document.createElement('div');
-        successOverlay.id = 'success-overlay';
-        successOverlay.className = 'absolute inset-0 bg-white z-10 rounded-3xl';
-        successOverlay.style.position = 'absolute';
-        successOverlay.style.zIndex = '10';
-        
-        // Get payment method display text
-        const paymentMethods = {
-            'cash': '💵 Cash',
-            'card': '💳 Card',
-            'digital_wallet': '📱 Digital Wallet',
-            'transfer': '🏦 Bank Transfer'
-        };
-        
-        successOverlay.innerHTML = `
-            <div class="p-12 text-center">
-                <div class="w-24 h-24 bg-gradient-to-r from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce-gentle">
-                    <i class="fas fa-check text-white text-4xl"></i>
-                </div>
-                <h2 class="text-3xl font-bold text-gray-800 mb-3">Order Placed!</h2>
-                <p class="text-gray-600 text-lg mb-4">Your order has been successfully created</p>
-                <div class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-4 mb-6">
-                    <div class="flex items-center justify-center space-x-3 text-green-700">
-                        <i class="fas fa-user"></i>
-                        <span class="font-semibold">${this.customerInfo.name}</span>
-                    </div>
-                    ${this.customerInfo.phone ? `
-                        <div class="flex items-center justify-center space-x-3 text-green-600 mt-2">
-                            <i class="fas fa-phone"></i>
-                            <span>${this.customerInfo.phone}</span>
-                        </div>
-                    ` : ''}
-                    <div class="flex items-center justify-center space-x-3 text-green-600 mt-2">
-                        <span>${paymentMethods[this.customerInfo.paymentMethod] || '💵 Cash'}</span>
-                    </div>
-                </div>
-                <div class="flex items-center justify-center space-x-2 text-green-600">
-                    <i class="fas fa-clock"></i>
-                    <span>Preparing your order...</span>
-                </div>
-            </div>
-        `;
-        
-        // Tambahkan overlay ke modal (bukan replace innerHTML)
-        content.style.position = 'relative';
-        content.appendChild(successOverlay);
-        
-        // Auto remove overlay setelah 2 detik
-        setTimeout(() => {
-            if (successOverlay && successOverlay.parentNode) {
-                successOverlay.remove();
-            }
-        }, 2000);
-    }
-
-    resetOrder() {
         // Reset processing states
         this.isProcessingOrder = false;
         this.resetProcessButton();
         this.removeProcessingOverlay();
         
-        // PERBAIKAN: Bersihkan success overlay jika ada
+        // Remove overlays
         const successOverlay = document.getElementById('success-overlay');
-        if (successOverlay) {
-            successOverlay.remove();
+        if (successOverlay) successOverlay.remove();
+        
+        // TRIPLE CLEAR STORAGE untuk memastikan
+        this.immediateStorageClear();
+        
+        // Verify dan paksa clear jika masih ada
+        setTimeout(() => {
+            const stillHasCart = localStorage.getItem('cashier_cart');
+            const stillHasCustomer = localStorage.getItem('cashier_customer_info');
+            
+            if (stillHasCart || stillHasCustomer) {
+                console.warn('Storage still has data, forcing nuclear clear...');
+                this.nuclearStorageClear();
+            }
+        }, 0);
+        
+        // Reset UI
+        this.resetCompleteUI();
+        
+        // Show table selection
+        setTimeout(() => {
+            this.showTableSelectionModal();
+        }, 500);
+    }
+
+    nuclearStorageClear() {
+        console.log('Nuclear storage clearing initiated...');
+        
+        // Method 1: Direct removal
+        ['cashier_cart', 'cashier_customer_info', 'cashier_selected_table', 'cashier_table_timestamp'].forEach(key => {
+            localStorage.removeItem(key);
+        });
+        
+        // Method 2: Set empty then remove
+        ['cashier_cart', 'cashier_customer_info', 'cashier_selected_table', 'cashier_table_timestamp'].forEach(key => {
+            try {
+                localStorage.setItem(key, JSON.stringify(null));
+                localStorage.removeItem(key);
+            } catch (e) {
+                console.warn(`Failed to clear ${key}:`, e);
+            }
+        });
+        
+        // Method 3: Clear all localStorage if necessary (extreme case)
+        try {
+            const cashierKeys = Object.keys(localStorage).filter(key => key.startsWith('cashier_'));
+            if (cashierKeys.length > 0) {
+                console.warn('Found remaining cashier keys, removing:', cashierKeys);
+                cashierKeys.forEach(key => {
+                    localStorage.removeItem(key);
+                });
+            }
+        } catch (error) {
+            console.error('Nuclear clear error:', error);
         }
         
-        // PERBAIKAN: Tutup modal dengan method yang konsisten
+        console.log('Nuclear clear completed');
+    }
+
+    resetCompleteUI() {
+        // Reset quantity controls di menu cards
+        document.querySelectorAll('[data-item-id]').forEach(element => {
+            const itemId = element.dataset.itemId;
+            if (itemId) {
+                this.updateMenuCardQuantity(itemId, 0);
+            }
+        });
+        
+        // Reset form fields
+        ['customer-name', 'customer-phone', 'coupon-code', 'discount-code'].forEach(id => {
+            const field = document.getElementById(id);
+            if (field) {
+                field.value = '';
+                field.classList.remove('input-error', 'input-success');
+            }
+        });
+        
+        // Reset payment methods
+        document.querySelectorAll('input[name="payment-method"]').forEach(radio => {
+            radio.checked = false;
+        });
+        
+        document.querySelectorAll('.payment-method-option').forEach(option => {
+            option.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50', 'border-blue-400');
+            option.classList.add('border-blue-200');
+        });
+        
+        // Set default payment
+        const cashRadio = document.getElementById('payment-cash');
+        if (cashRadio) {
+            cashRadio.checked = true;
+            const option = cashRadio.closest('.payment-method-option');
+            if (option) {
+                option.classList.add('ring-2', 'ring-blue-400', 'bg-blue-50', 'border-blue-400');
+            }
+        }
+        
+        // Reset table selection
+        document.querySelectorAll('.table-btn').forEach(btn => {
+            btn.classList.remove('bg-gradient-to-r', 'from-orange-500', 'to-orange-600', 'text-white', 'scale-105');
+            btn.classList.add('bg-gradient-to-br', 'from-gray-50', 'to-gray-100');
+            btn.style.transform = '';
+        });
+        
+        // Hide current table info
+        const tableInfo = document.getElementById('current-table-info');
+        if (tableInfo) tableInfo.classList.add('hidden');
+        
+        // Reset promotions
+        this.appliedCoupon = null;
+        this.appliedDiscount = null;
+        this.hideCouponStatus();
+        this.hideDiscountStatus();
+        
+        // Update cart display
+        this.updateCartDisplay();
+        
+        // Close modals
         this.closeCartModal();
         this.closeAllModals();
+    }
+
+    showOrderSuccessAnimation() {
+        // Remove processing overlay first
+        this.removeProcessingOverlay();
         
-        // Clear data dari localStorage
+        const paymentMethods = {
+            'cash': '💵 Cash',
+            'card': '💳 Card', 
+            'digital_wallet': '📱 Digital Wallet',
+            'transfer': '🏦 Bank Transfer'
+        };
+        
+        const successOverlay = document.createElement('div');
+        successOverlay.id = 'success-overlay';
+        successOverlay.innerHTML = `
+            <div class="w-full max-w-md mx-auto bg-white rounded-3xl shadow-2xl p-8 text-center">
+                <div class="w-24 h-24 bg-gradient-to-r from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce-gentle">
+                    <i class="fas fa-check text-white text-4xl"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-gray-800 mb-3">Order Placed!</h2>
+                <p class="text-gray-600 text-lg mb-6">Your order has been successfully created</p>
+                
+                <div class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-4 mb-6 border border-green-100">
+                    <div class="flex items-center justify-center space-x-3 text-green-700 mb-2">
+                        <i class="fas fa-user"></i>
+                        <span class="font-semibold">${this.customerInfo.name}</span>
+                    </div>
+                    ${this.customerInfo.phone ? `
+                        <div class="flex items-center justify-center space-x-3 text-green-600 mb-2">
+                            <i class="fas fa-phone text-sm"></i>
+                            <span class="text-sm">${this.customerInfo.phone}</span>
+                        </div>
+                    ` : ''}
+                    <div class="flex items-center justify-center space-x-3 text-green-600">
+                        <span class="text-sm">${paymentMethods[this.customerInfo.paymentMethod] || '💵 Cash'}</span>
+                    </div>
+                </div>
+                
+                <div class="flex items-center justify-center space-x-2 text-green-600 bg-green-50 py-3 px-4 rounded-xl">
+                    <i class="fas fa-clock text-sm"></i>
+                    <span class="text-sm font-medium">Preparing your order...</span>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(successOverlay);
+        
+        setTimeout(() => {
+            if (successOverlay && successOverlay.parentNode) {
+                successOverlay.style.opacity = '0';
+                setTimeout(() => successOverlay.remove(), 300);
+            }
+        }, 2500);
+    }
+
+    resetOrder() {
+        console.log('Starting complete order reset...');
+        
+        // Reset processing states
+        this.isProcessingOrder = false;
+        this.resetProcessButton();
+        this.removeProcessingOverlay();
+        
+        // Remove all overlays
+        const successOverlay = document.getElementById('success-overlay');
+        if (successOverlay) successOverlay.remove();
+        
+        const processingOverlay = document.getElementById('processing-overlay');
+        if (processingOverlay) processingOverlay.remove();
+        
+        // CRITICAL: Triple clear localStorage
+        this.forceRemoveFromStorage();
         this.clearAllStorage();
+        localStorage.removeItem('cashier_cart'); // Extra safety
         
-        // Reset cart, table selection, dan customer info
+        // Reset ALL object properties to initial state
         this.cart = [];
         this.selectedTable = null;
         this.customerInfo = { name: '', phone: '', paymentMethod: 'cash' };
         this.appliedCoupon = null;
         this.appliedDiscount = null;
+        this.itemQuantities = new Map(); // Reset to new Map
+        this.currentItem = null;
+        this.modalTriggerButton = null;
+        this.pendingButtonReset = null;
+        
+        // Close all modals
+        this.closeCartModal();
+        this.closeAllModals();
+        
+        // Reset UI elements
+        this.resetAllUIElements();
+        
+        // Verify localStorage is actually empty
+        setTimeout(() => {
+            const remainingCart = localStorage.getItem('cashier_cart');
+            if (remainingCart) {
+                console.warn('Cart still exists in localStorage, forcing removal...');
+                localStorage.removeItem('cashier_cart');
+            }
+            console.log('Order reset completed. LocalStorage check:', {
+                cart: localStorage.getItem('cashier_cart'),
+                table: localStorage.getItem('cashier_selected_table'),
+                customer: localStorage.getItem('cashier_customer_info')
+            });
+        }, 100);
+        
+        // Show table selection after delay
+        setTimeout(() => {
+            this.showTableSelectionModal();
+        }, 1000);
+    }
 
-        // Reset all menu card quantities
-        this.itemQuantities.clear();
-        document.querySelectorAll('.quantity-controls').forEach(control => {
-            control.style.display = 'none';
+    immediateStorageClear() {
+        // Synchronous clearing - tidak ada setTimeout atau async
+        const keys = ['cashier_cart', 'cashier_customer_info', 'cashier_selected_table', 'cashier_table_timestamp'];
+        
+        keys.forEach(key => {
+            try {
+                localStorage.removeItem(key);
+                // Verify removal
+                if (localStorage.getItem(key) !== null) {
+                    // Force remove with different approach
+                    localStorage.setItem(key, '');
+                    localStorage.removeItem(key);
+                }
+            } catch (error) {
+                console.error(`Failed to remove ${key}:`, error);
+            }
         });
+        
+        // Clear all cashier prefixed items
+        try {
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('cashier_')) {
+                    localStorage.removeItem(key);
+                }
+            });
+        } catch (error) {
+            console.error('Error clearing prefixed keys:', error);
+        }
+        
+        console.log('Immediate storage clear completed');
+    }
+
+    resetAllUIElements() {
+        // Reset menu card quantities
+        document.querySelectorAll('.quantity-controls').forEach(control => {
+            control.classList.add('hidden');
+            control.classList.remove('flex');
+        });
+        
         document.querySelectorAll('.add-item-btn').forEach(btn => {
             btn.classList.remove('hidden');
         });
         
-        // Reset form fields
-        this.resetFormFields();
-        this.updateCartDisplay();
-        
-        // Reset customer fields
+        // Reset customer form fields
         const customerNameField = document.getElementById('customer-name');
         const customerPhoneField = document.getElementById('customer-phone');
+        
         if (customerNameField) {
             customerNameField.value = '';
             customerNameField.classList.remove('input-error', 'input-success');
         }
+        
         if (customerPhoneField) {
             customerPhoneField.value = '';
             customerPhoneField.classList.remove('input-error', 'input-success');
         }
         
-        // Reset payment method
-        const paymentRadios = document.querySelectorAll('input[name="payment-method"]');
-        paymentRadios.forEach(radio => {
-            radio.checked = false; // TAMBAHAN: Reset checked state
-            const option = radio.closest('.payment-method-option');
-            if (option) {
-                option.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50', 'border-blue-400');
-                option.classList.add('border-blue-200');
-            }
+        // Reset payment method selection
+        document.querySelectorAll('.payment-method-option').forEach(option => {
+            option.classList.remove('ring-2', 'ring-blue-400', 'bg-blue-50', 'border-blue-400');
+            option.classList.add('border-blue-200');
+        });
+        
+        document.querySelectorAll('input[name="payment-method"]').forEach(radio => {
+            radio.checked = false;
         });
         
         // Set default payment method
@@ -2571,7 +2896,7 @@ class CashierSystem {
             }
         }
         
-        // Reset coupon and discount fields
+        // Reset promotion fields
         this.resetPromotionFields();
         
         // Reset table selection UI
@@ -2581,20 +2906,14 @@ class CashierSystem {
             btn.style.transform = '';
         });
         
-        // PERBAIKAN: Gunakan method yang konsisten untuk hide table info
+        // Hide current table info
         const currentTableInfo = document.getElementById('current-table-info');
         if (currentTableInfo && !currentTableInfo.classList.contains('hidden')) {
-            currentTableInfo.style.animation = 'fadeOut 0.3s ease-in-out';
-            setTimeout(() => {
-                currentTableInfo.classList.add('hidden');
-                currentTableInfo.style.animation = '';
-            }, 300);
+            currentTableInfo.classList.add('hidden');
         }
         
-        // Show table selection modal again
-        setTimeout(() => {
-            this.showTableSelectionModal();
-        }, 1000);
+        // Update cart display
+        this.updateCartDisplay();
     }
 
     // Tambahkan method helper untuk reset form
