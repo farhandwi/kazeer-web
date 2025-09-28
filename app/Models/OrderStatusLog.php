@@ -13,7 +13,7 @@ class OrderStatusLog extends Model
     use HasFactory;
 
     protected $fillable = [
-        'order_id', 'status', 'notes', 'changed_by_type', 'changed_by_id'
+        'order_id', 'status', 'notes', 'changed_by_type', 'changed_by_id','created_at'
     ];
 
     public $timestamps = false;

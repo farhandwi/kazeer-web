@@ -2,7 +2,6 @@
 
 namespace App\Providers\Filament;
 
-use App\Http\Controllers\Auth\LoginController;
 use App\Http\Middleware\FilamentAuthenticate;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -18,39 +17,32 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
-use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
-class AdminPanelProvider extends PanelProvider
+class KitchenPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
     {
         return $panel
-            ->default()
-            ->id('admin')
-            ->path('admin')
+            ->id('kitchen')
+            ->path('kitchen')
             ->middleware([
                 FilamentAuthenticate::class,
             ])
             ->colors([
-                'primary' => Color::Amber,
+                'primary' => Color::Green,
                 'gray' => Color::Slate,
             ])
             ->favicon(asset('images/3.png'))
             ->brandLogo(asset('images/logo.png'))
-            ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
-            ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
+            ->discoverResources(in: app_path('Filament/Kitchen/Resources'), for: 'App\\Filament\\Kitchen\\Resources')
+            ->discoverPages(in: app_path('Filament/Kitchen/Pages'), for: 'App\\Filament\\Kitchen\\Pages')
             ->pages([
                 Pages\Dashboard::class,
             ])
-            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
+            ->discoverWidgets(in: app_path('Filament/Kitchen/Widgets'), for: 'App\\Filament\\Kitchen\\Widgets')
             ->widgets([
                 Widgets\AccountWidget::class,
-                Widgets\FilamentInfoWidget::class,
-                // Custom widgets akan ditambahkan di sini
-                \App\Filament\Widgets\StatsOverview::class,
-                \App\Filament\Widgets\OrdersChart::class,
-                \App\Filament\Widgets\RecentOrders::class,
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -65,20 +57,9 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-                \App\Http\Middleware\CheckAdminAccess::class,
+                \App\Http\Middleware\CheckKitchenAccess::class,
             ])
-            ->navigationGroups([
-                'Restaurant Management',
-                'Menu Management',
-                'Order Management',
-                'Customer Management',
-                'Reports',
-                'Settings',
-            ])
-            ->breadcrumbs(false)
-            ->maxContentWidth('full')
-            ->sidebarCollapsibleOnDesktop()
-            ->brandName('Restaurant QR Admin')
+            ->brandName('Kitchen Dashboard')
             ->brandLogo(asset('images/logo.png'))
             ->darkMode(false);
     }

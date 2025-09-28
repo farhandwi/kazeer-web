@@ -163,4 +163,5 @@ class Order extends Model
     {
         return 'Rp ' . number_format($this->total_amount, 0, ',', '.');
     }
+    
 }

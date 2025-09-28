@@ -48,6 +48,30 @@ class OrderItem extends Model
         return $this->hasMany(OrderItemStation::class);
     }
 
+    public function selectedOptions(): HasMany
+    {
+        return $this->hasMany(OrderItemOption::class);
+    }
+
+    public function orderItemOptions()
+    {
+        return $this->hasMany(OrderItemOption::class, 'order_item_id');
+    }
+
+    // Helper method untuk mendapatkan options dengan nama
+    public function getSelectedOptionsWithNames()
+    {
+        return $this->selectedOptions()
+            ->with('menuOption')
+            ->get()
+            ->map(function($orderOption) {
+                return [
+                    'name' => $orderOption->menuOption->name,
+                    'price' => $orderOption->option_price
+                ];
+            });
+    }
+
     // Update status item dengan tracking per station
     public function updateItemStatus($newStatus, $stationId = null)
     {
@@ -80,6 +104,16 @@ class OrderItem extends Model
         return ($basePrice + $optionsPrice) * $this->quantity;
     }
 
+    public function getOptionsPrice()
+    {
+        return $this->selectedOptions()->sum('option_price');
+    }
+
+    public function getItemTotalWithOptions()
+    {
+        return ($this->unit_price + $this->getOptionsPrice()) * $this->quantity;
+    }
+
     public function getStatusLabelAttribute(): string
     {
         return match($this->status) {
@@ -89,5 +123,20 @@ class OrderItem extends Model
             'served' => 'Served',
             default => ucfirst($this->status),
         };
+    }
+
+    public function getFormattedUnitPriceAttribute(): string
+    {
+        return 'Rp ' . number_format($this->unit_price, 0, ',', '.');
+    }
+
+    public function getFormattedTotalPriceAttribute(): string
+    {
+        return 'Rp ' . number_format($this->total_price, 0, ',', '.');
+    }
+
+    public function getFormattedOptionsPriceAttribute(): string
+    {
+        return 'Rp ' . number_format($this->getOptionsPrice(), 0, ',', '.');
     }
 }

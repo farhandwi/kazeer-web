@@ -14,11 +14,16 @@ class OrderTimeline extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'order_id', 'event_type', 'title', 'description', 'metadata'
+        'order_id',
+        'event_type',
+        'title',
+        'description',
+        'metadata',
+        'created_at',
     ];
 
     protected $casts = [
-        'metadata' => 'array',
+        'metadata'   => 'array',
         'created_at' => 'datetime',
     ];
 
