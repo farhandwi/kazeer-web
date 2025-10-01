@@ -8,6 +8,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Cashier System')</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
@@ -55,6 +56,9 @@
     <link rel="stylesheet" href="{{ asset('css/cart-modal.css') }}">
     <link rel="stylesheet" href="{{ asset('css/dashboard.css') }}">
     <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+        }
         /* Responsive user profile section */
         .sidebar-minimized-center {
             margin-right: 1rem;
